@@ -1,0 +1,8 @@
+Results Summary
+----------------
+Test set size: 2,775 documents
+Accuracy: 76.22%
+Weighted F1: 0.758
+Cohen's Kappa: 0.584
+AUC (approx.): 0.87
+Notes: Classes with fewer than 100 samples were excluded (17 training genres).

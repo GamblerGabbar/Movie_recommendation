@@ -1,0 +1,117 @@
+0: Movie Genre Classification and Recommendation
+1: sunil25302@iiitnr.edu.invikas25302@iiitnr.edu.intejendra25302@iiitnr.edu.inSunil Kerketta, Vikas Singh Rajput, Tejendra Kanwar\nsunil25302@iiitnr.edu.in; vikas25302@iiitnr.edu.in; tejendra25302@iiitnr.edu.in
+2: mallikharjuna@iiitnr.edu.inDSAI Branch, Dr. Shyama Prasad Mukherjee International Institute of Information Technology\nNaya Raipur, Chhattisgarh, India
+3: Abstract
+4: As streaming catalogs continue to expand, manual genre labeling has become difficult to maintain at scale. In this work, we present an end-to-end Big Data pipeline for movie genre classification and recommendation. Using The Movie Database (TMDB) API, we collected 13,711 labeled movie documents across 19 genres and designed the ingestion layer with retry logic, exponential backoff, and checkpoint-style persistence for reliability. Because the corpus is naturally imbalanced (about 87:1 between largest and smallest classes), we use Complementary Naive Bayes (CNB), which is more stable than standard Multinomial Naive Bayes under skewed distributions. Data is stored in a Dockerized Hadoop HDFS cluster (NameNode + DataNode), while Apache Mahout runs SequenceFile conversion and TF-IDF vectorization using Lucene's EnglishAnalyzer (stemming, stop-word removal, unigram+bigrams, L2 normalization). On an 80/20 split across 17 usable genre classes, the model reaches 76.22% accuracy (weighted F1: 0.758, Kappa: 0.584) on 2,775 held-out documents. The curated output is then exported as a compact JSON database for the CineVault dashboard, enabling interactive browsing, search, and personalized recommendations.
+5: Keywords - Big Data, Hadoop HDFS, MapReduce, Apache Mahout, Complementary Naive Bayes, TF-IDF, Movie Genre Classification, Docker, TMDB, CineVault
+6: Under the Guidance of\nDr. Mallikharjuna Rao K.\nAssistant Professor, Department of DSAI\nmallikharjuna@iiitnr.edu.in
+7: 
+8: I. INTRODUCTION
+9: Modern movie discovery depends on accurate genre metadata, but manual annotation cannot keep pace with rapidly growing content libraries. Plot overviews and metadata fields such as keywords, cast, and taglines provide useful textual clues for automated labeling. The practical challenge is scale: once the corpus becomes large, single-node NLP workflows struggle with both memory usage and runtime, especially during TF-IDF construction and classifier training.
+10: To address this, we built a distributed pipeline on top of Hadoop. Data collection starts from four TMDB paginated endpoints (popular, top-rated, now-playing, and upcoming), and each movie is stored using a label-aware folder structure. The dataset is then uploaded to HDFS in a Docker Compose environment to keep execution reproducible. Mahout MapReduce jobs handle SequenceFile generation, TF-IDF extraction, and CNB training in parallel. The processed output is finally exported into a compact JSON database used by the CineVault recommendation interface.
+11: Main contributions include: (1) a fault-tolerant TMDB ingestion service (fetch_tmdb_movies.py) with rate-limit handling, exponential backoff, and incremental persistence, used to collect 13,711 labeled movies across 19 genres; (2) an optional enrichment module (enrich_dataset.py) that adds keywords, cast, and director metadata to improve feature quality; (3) a Dockerized HDFS setup for reproducible distributed storage; (4) a Mahout preprocessing chain with Lucene EnglishAnalyzer to produce L2-normalized TF-IDF bigram vectors; (5) a CNB classifier trained on 17 effective genres (classes with >=100 samples), achieving AUC near 0.87; and (6) a practical CineVault interface for browsing, multi-field search, and personalized recommendations over a compact 3,279-movie JSON database.
+12: II. RELATED WORK AND RESEARCH GAPS
+13: Text-based genre classification has been studied extensively in information retrieval and NLP. McCallum and Nigam (1998) showed that Naive Bayes is a strong baseline for sparse bag-of-words classification due to its efficiency and simplicity. Rennie et al. (2003) later highlighted that Multinomial Naive Bayes can behave poorly under class imbalance and proposed Complementary Naive Bayes (CNB), which tends to produce more stable boundaries in skewed datasets. Given the imbalance in our corpus (Drama: 3,235 vs. War: 117), CNB is a practical and well-motivated choice.
+14: TF-IDF, formalized by Salton and Buckley (1988), remains a dependable representation for short and noisy textual documents. Manning et al. (2008) further showed that stemming and stop-word removal improve separability for short texts such as movie overviews. Our implementation relies on Lucene's EnglishAnalyzer inside Mahout, which provides a mature stemming and stop-word pipeline.
+15: Hadoop MapReduce (White, 2015) offers effective horizontal scalability for data-parallel tasks like corpus-wide term counting and TF-IDF construction. Mahout complements this with practical command-line tools such as seqdirectory, seq2sparse, trainnb, and testnb. By packaging the full environment in Docker Compose, we avoid host-specific dependency issues and improve reproducibility of experiments.
+16: 
+17: Research gap: many public implementations still stop at single-node notebooks and do not include distributed storage, scripted reproducibility, or user-facing deployment. They also rarely connect classification outputs back into a real recommendation interface. Our work addresses both limitations through a containerized HDFS+Mahout workflow and an interactive CineVault dashboard built on the same processed data.
+18: 
+19: III. SYSTEM ARCHITECTURE AND METHODOLOGY
+20: 
+21: Fig. 1.  CineVault Big Data Platform - Complete System Architecture & Workflow
+22: Figure 1 summarizes the CineVault flow: data is collected and labeled from TMDB, stored as genre-wise local documents, moved into Dockerized HDFS, processed through Mahout MapReduce for feature extraction and CNB training, and finally served through the dashboard for browsing and recommendation.
+23: 
+24: A. Data Ingestion Layer (fetch_tmdb_movies.py)
+25: The ingestion module (fetch_tmdb_movies.py) is designed for reliability under real API conditions. It queries four paginated TMDB endpoints, removes duplicates using seen-ID tracking, and writes each accepted document to disk immediately. For HTTP 429 responses, it follows Retry-After guidance; for transient failures, it applies exponential backoff (wait = 2^attempt seconds, up to five retries). We also keep a conservative inter-request delay (about 270 ms) to remain within fair-use behavior. Each movie is saved as UTF-8 text under dataset/movies/<Genre>/<movie_id>.txt, which allows Mahout to infer labels directly from folder names.
+26: 
+27: B. Metadata Enrichment & JSON Database Builder
+28: The optional enrichment step (enrich_dataset.py) improves document quality by pulling keywords and credits from TMDB. We append high-value fields such as director, cast, and thematic keywords to each movie file. Keywords are repeated deliberately so genre-specific terms carry stronger TF-IDF impact. This usually improves class separability. In parallel, build_movie_db.py creates a compact client-side JSON store by capping each genre at MAX_PER_GENRE=200 entries and serializing key fields into movie_recommender/movies_db.json.
+29: The TF-IDF term weight used in vectorisation is shown in Equation (1):
+30: tfidf(t, d) = tf(t, d) * log(N / df(t))
+31: (1)
+32: Complementary Naive Bayes prediction follows the decision rule in Equation (2):
+33: y_hat = argmax_c sum_i x_i * log P(w_i | ~c) + log P(c)
+34: where x_i are TF-IDF weights and ~c denotes the complement class. (2)
+35: 
+36: 
+37: C. Distributed Storage Layer (Docker + HDFS)
+38: The cluster is launched via Docker Compose with two services: a custom NameNode image (Mahout 0.13.0 included) and a DataNode for block storage. Dataset and script folders are mounted so experiments can be rerun consistently. HDFS paths movie_data_raw and movie_data_filtered are kept separate to preserve raw ingestion output and controlled training input.
+39: 
+40: D. Mahout MapReduce Preprocessing (seqdirectory + seq2sparse)
+41: Preprocessing runs in two stages. First, mahout seqdirectory converts genre folders into SequenceFiles. Then mahout seq2sparse computes TF-IDF vectors with Lucene's EnglishAnalyzer (stemming and stop-word removal). We use unigram+bigrams (-ng 2), keep informative terms (-ml 5), suppress overly common terms (-x 70), and apply L2 normalization (-n 2).
+42: 
+43: 
+44: 
+45: E. Model Training, Evaluation, and Dashboard Layer
+46: Training begins with an 80/20 split produced by mahout split. We then train a Complementary Naive Bayes model with mahout trainnb and evaluate with mahout testnb to obtain confusion-matrix and per-class statistics in HDFS. On top of this pipeline, the static dashboard (website/index.html and movie_recommender/index.html) provides browsing, keyword search, and lightweight personalized recommendation behavior.
+47: 
+48: IV. EXPERIMENTAL SETUP AND RESULTS
+49: A. Dataset: Collection, Composition, and Characteristics
+50: The dataset was gathered programmatically from TMDB API v3. Our ingestion process queries four discovery endpoints (/movie/popular, /movie/top_rated, /movie/now_playing, and /movie/upcoming), then de-duplicates movie IDs across all sources. A record is retained only when it includes both a usable overview and at least one genre label. For classification, the first TMDB genre ID is treated as the primary class.
+51: The final corpus contains 13,711 UTF-8 movie documents stored under dataset/movies/<Genre>/<id>.txt. Each document includes a title and overview, and the folder hierarchy is directly compatible with Mahout's seqdirectory stage. The distribution is strongly imbalanced: Drama (3,235) is the largest class, while TV_Movie (37) and History (95) are the smallest. This imbalance is one of the key reasons we favor Complementary Naive Bayes for training.
+52: 
+53: Fig. 2.  TMDB Dataset - Full Genre Distribution (13,711 documents, 19 classes)
+54: For supervised modeling, classes with fewer than 100 documents are excluded to avoid unstable decision boundaries. This removes History (95) and TV_Movie (37), leaving 17 genres and 13,579 documents (99.0% of the corpus). The filter is implemented in 0_prepare_filtered_hdfs.sh and runs entirely inside HDFS, copying eligible data from /movie_data_raw to /movie_data_filtered while preserving the raw corpus.
+55: 
+56: Fig. 3.  Kept vs. Excluded Genre Ratio - 17 Training Genres vs. 2 Excluded
+57: B. Command Workflow and Reproducibility
+58: To reproduce the pipeline end-to-end:\n1) .\.venv\Scripts\python.exe .\data_ingestion\fetch_tmdb_movies.py\n2) .\.venv\Scripts\python.exe .\data_ingestion\enrich_dataset.py   (optional)\n3) cd docker_environment\n   docker-compose up -d --build\n4) docker exec -it hadoop-mahout-namenode bash\n5) bash /data/pipeline_scripts/1_upload_to_hdfs.sh\n6) bash /data/pipeline_scripts/0_prepare_filtered_hdfs.sh\n7) bash /data/pipeline_scripts/2_preprocess_mahout.sh\n8) bash /data/pipeline_scripts/3_train_and_test_lr.sh\n
+59: Table I summarises the core stages, tools, and outputs used in the workflow.
+60: 
+61: TABLE I.  Pipeline Execution Summary (Commands, Tools, and Outputs)
+62: The workflow is intentionally script-driven: each stage is encapsulated in a shell script to minimise manual steps and ensure repeatability across environments.
+63: C. Dashboard Screenshots
+64: Figures 5-8 provide screenshots and derived artefacts used in the project: the recommender UI, the personalisation scoring rule, a command workflow snapshot, and the Docker service summary.
+65: 
+66: Fig. 5.  CineVault Recommendation Dashboard (movie_recommender/index.html)
+67: 
+68: 
+69: Fig. 6.  Recommendation Scoring Rule (History + Keywords + Ratings)
+70: 
+71: Fig. 7.  End-to-End Command Workflow (text)
+72: 
+73: 
+74: Figure 8 summarises the Docker Compose services required to run the HDFS + Mahout environment.
+75: 
+76: Fig. 8.  Docker Compose Services Summary (NameNode + DataNode)
+77: V. CONCLUSION
+78: CineVault shows that a full Big Data workflow for genre classification can be both reproducible and practical in an academic environment. From TMDB ingestion through HDFS storage and Mahout-based training, the pipeline remains script-driven and easy to rerun. Performance is competitive for this dataset (AUC near 0.87), and the final JSON export connects model outputs directly to an interactive recommendation interface.
+79: VI. FUTURE WORK
+80: Future work can improve both modeling quality and deployment maturity. First, deep text encoders (such as SBERT or fine-tuned BERT) may capture semantics that sparse TF-IDF features miss. Second, moving to multi-label prediction would better match real TMDB tagging behavior. Third, a small inference API (Flask/FastAPI) can expose real-time predictions to the dashboard. Fourth, hybrid recommendation (content + collaborative filtering) can improve personalization and cold-start behavior. Finally, stream-based ingestion (e.g., Kafka) can support near real-time updates and incremental retraining.
+81: 
+82: 
+83: . REFERENCES
+84: [1] The Movie Database (TMDB), "API Documentation," https://developers.themoviedb.org/3 (accessed May 2026).
+85: [2] Apache Hadoop, "Hadoop Project," https://hadoop.apache.org/ (accessed May 2026).
+86: [3] Apache Mahout, "Mahout: Scalable Machine Learning," https://mahout.apache.org/ (accessed May 2026).
+87: [4] G. Salton and C. Buckley, "Term-weighting approaches in automatic text retrieval," Information Processing & Management, 1988.
+88: [5] A. McCallum and K. Nigam, "A comparison of event models for Naive Bayes text classification," AAAI Workshop on Learning for Text Categorization, 1998.
+89: [6] J. D. M. Rennie, L. Shih, J. Teevan, and D. R. Karger, "Tackling the poor assumptions of Naive Bayes text classifiers," ICML, 2003.
+90: [7] Apache Lucene, "Lucene Analyzers," https://lucene.apache.org/ (accessed May 2026).
+91: [8] Docker Documentation, "Docker Compose Overview," https://docs.docker.com/compose/ (accessed May 2026).
+92: [9] T. White, Hadoop: The Definitive Guide, O’Reilly Media, 2015.
+93: [10] C. D. Manning, P. Raghavan, and H. Schütze, Introduction to Information Retrieval, Cambridge University Press, 2008.
+94: 
+95: . APPENDIX A. ADDITIONAL PROJECT FIGURES AND ARTIFACTS
+96: This appendix provides supplementary figures derived directly from the repository contents (dataset statistics, web-DB coverage, and key scripts/configurations).
+97: 
+98: Fig. A1. Top 10 Genres by Movie Count
+99: 
+100: Fig. A2. Bottom 10 Genres by Movie Count
+101: 
+102: Fig. A3. Filtered Dataset Distribution (17 Genres)
+103: 
+104: Fig. A4. Web UI JSON Coverage by Genre (movies_db.json)
+105: 
+106: Fig. A5. Mahout seq2sparse Parameters
+107: 
+108: Fig. A6. Key Repository Artifacts
+109: D. Results
+110: Evaluation results for the held-out test set are listed below:
+111: Test set size: 2,775 documents
+112: Accuracy: 76.22%
+113: Weighted F1: 0.758
+114: Cohen's Kappa: 0.584
+115: AUC (approx.): 0.87
+116: Notes: Classes with fewer than 100 samples were excluded (17 training genres).

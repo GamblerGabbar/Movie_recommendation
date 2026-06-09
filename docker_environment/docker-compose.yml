@@ -1,0 +1,37 @@
+version: "3.7"
+
+services:
+  # HDFS NameNode - manages file metadata & coordinates the cluster
+  namenode:
+    build: .
+    container_name: hadoop-mahout-namenode
+    hostname: namenode
+    environment:
+      - CLUSTER_NAME=movie-genre-cluster
+    env_file:
+      - ./hadoop.env
+    ports:
+      - "9870:9870"   # HDFS Web UI
+      - "9000:9000"   # HDFS IPC port
+    volumes:
+      - ../dataset:/data/dataset
+      - ../pipeline_scripts:/data/pipeline_scripts
+      - hadoop_namenode:/hadoop/dfs/name
+
+  # HDFS DataNode - stores the actual data blocks (REQUIRED for HDFS writes to work)
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: hadoop-mahout-datanode
+    hostname: datanode
+    depends_on:
+      - namenode
+    env_file:
+      - ./hadoop.env
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
