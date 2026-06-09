@@ -10,6 +10,8 @@ env/
 data_ingestion/.venv/
 data_ingestion/venv/
 data_ingestion/env/
+.env
+data_ingestion/.env
 
 # IDE and editor settings
 .vscode/
